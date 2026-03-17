@@ -1,9 +1,6 @@
-// Prisma schema — defines all database tables.
-// After editing this file, run: npx prisma migrate dev --name your-change-name
-// This creates a migration SQL file AND updates the generated client.
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -11,17 +8,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Shop ──────────────────────────────────────────────────────────────────
-// One row per Shopify store that has installed your app.
-// accessToken is the permanent token used to call Shopify's API on behalf of
-// this store. Never expose it to the frontend.
 model Shop {
   id          String   @id @default(uuid())
-  domain      String   @unique  // e.g. "my-store.myshopify.com"
-  accessToken String            // permanent OAuth token — keep secret
-  scope       String            // scopes the merchant approved
-  email       String?           // shop owner email (fetched from Shopify after install)
-  name        String?           // shop name
+  domain      String   @unique
+  accessToken String
+  scope       String
+  email       String?
+  name        String?
   installedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -30,12 +23,10 @@ model Shop {
   subscriptions Subscription[]
 }
 
-// ─── Customer ──────────────────────────────────────────────────────────────
-// One row per customer who has at least one subscription in this shop.
 model Customer {
   id                String   @id @default(uuid())
   shopId            String
-  shopifyCustomerId String?           // Shopify's numeric customer ID (as string)
+  shopifyCustomerId String?
   email             String
   firstName         String?
   lastName          String?
@@ -47,28 +38,24 @@ model Customer {
   shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
 
-  @@unique([shopId, email])   // same email can exist in different shops but not twice in one
+  @@unique([shopId, email])
   @@index([shopId])
   @@index([shopifyCustomerId])
 }
 
-// ─── BillingPlan ───────────────────────────────────────────────────────────
-// Merchant-created subscription templates.
-// Example: "Monthly Coffee Plan — every 30 days, 15% off, free shipping".
-// Products aren't stored here — they're on the Subscription.
 model BillingPlan {
-  id            String      @id @default(uuid())
+  id            String       @id @default(uuid())
   shopId        String
-  name          String                    // "Monthly Plan"
-  description   String?                   // shown to customers
-  intervalUnit  IntervalUnit              // WEEK | MONTH | YEAR
-  intervalCount Int         @default(1)   // e.g. 2 = every 2 months
+  name          String
+  description   String?
+  intervalUnit  IntervalUnit
+  intervalCount Int          @default(1)
   discountType  DiscountType @default(PERCENTAGE)
-  discountValue Decimal     @default(0) @db.Decimal(10, 2)  // 10 = 10% or $10
-  isActive      Boolean     @default(true)
-  sortOrder     Int         @default(0)   // display order in widget
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  discountValue Decimal      @default(0) @db.Decimal(10, 2)
+  isActive      Boolean      @default(true)
+  sortOrder     Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
@@ -77,46 +64,28 @@ model BillingPlan {
   @@index([shopId, isActive])
 }
 
-// ─── Subscription ──────────────────────────────────────────────────────────
-// A customer enrolled in a billing plan.
-// products is a JSON snapshot of what they're subscribing to — we snapshot it
-// so if the Shopify product changes price, existing subscriptions aren't affected.
 model Subscription {
-  id              String             @id @default(uuid())
-  shopId          String
-  customerId      String
-  billingPlanId   String
-  status          SubscriptionStatus @default(ACTIVE)
-
-  // Product snapshot: [{ variantId, title, price, quantity, imageUrl }]
-  products        Json
-
-  // Pricing at time of enrollment
-  subtotal        Decimal   @db.Decimal(10, 2)  // before discount
-  discountAmount  Decimal   @default(0) @db.Decimal(10, 2)
-  total           Decimal   @db.Decimal(10, 2)  // what we actually charge
-
-  // Billing schedule
-  nextBillingDate DateTime
-  lastBilledAt    DateTime?
-
-  // Lifecycle timestamps
-  trialEndsAt     DateTime?
-  pausedAt        DateTime?
-  pauseUntil      DateTime?   // auto-resume date (null = paused indefinitely)
-  cancelledAt     DateTime?
-  cancelReason    String?
-
-  // Shopify address IDs — we store these to create orders via Shopify API
-  shippingAddressId String?
-  billingAddressId  String?
-
-  // Stripe customer + payment method (for recurring billing)
+  id                    String             @id @default(uuid())
+  shopId                String
+  customerId            String
+  billingPlanId         String
+  status                SubscriptionStatus @default(ACTIVE)
+  products              Json
+  subtotal              Decimal            @db.Decimal(10, 2)
+  discountAmount        Decimal            @default(0) @db.Decimal(10, 2)
+  total                 Decimal            @db.Decimal(10, 2)
+  nextBillingDate       DateTime
+  lastBilledAt          DateTime?
+  trialEndsAt           DateTime?
+  pausedAt              DateTime?
+  pauseUntil            DateTime?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  shippingAddressId     String?
   stripeCustomerId      String?
   stripePaymentMethodId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   customer    Customer    @relation(fields: [customerId], references: [id])
@@ -126,38 +95,27 @@ model Subscription {
   @@index([shopId])
   @@index([customerId])
   @@index([status])
-  @@index([nextBillingDate])  // used by the billing cron to find what's due
+  @@index([nextBillingDate])
 }
 
-// ─── Billing ───────────────────────────────────────────────────────────────
-// One row per charge attempt (succeeded or failed).
-// We never delete these — they form the complete payment history.
 model Billing {
-  id             String        @id @default(uuid())
-  subscriptionId String
-  amount         Decimal       @db.Decimal(10, 2)
-  currency       String        @default("USD")
-  status         BillingStatus @default(PENDING)
-
-  // Stripe references
+  id                    String        @id @default(uuid())
+  subscriptionId        String
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("USD")
+  status                BillingStatus @default(PENDING)
   stripePaymentIntentId String?
   stripeInvoiceId       String?
-
-  // Shopify order created for this billing cycle
-  shopifyOrderId String?
-
-  // Failure handling
-  failureReason  String?
-  retryCount     Int       @default(0)
-  nextRetryAt    DateTime?
-
-  billedAt    DateTime  @default(now())
-  succeededAt DateTime?
-  refundedAt  DateTime?
-  refundAmount Decimal?  @db.Decimal(10, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  shopifyOrderId        String?
+  failureReason         String?
+  retryCount            Int           @default(0)
+  nextRetryAt           DateTime?
+  billedAt              DateTime      @default(now())
+  succeededAt           DateTime?
+  refundedAt            DateTime?
+  refundAmount          Decimal?      @db.Decimal(10, 2)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
@@ -165,8 +123,6 @@ model Billing {
   @@index([status])
   @@index([billedAt])
 }
-
-// ─── Enums ─────────────────────────────────────────────────────────────────
 
 enum SubscriptionStatus {
   ACTIVE
@@ -189,6 +145,6 @@ enum IntervalUnit {
 }
 
 enum DiscountType {
-  PERCENTAGE   // e.g. 10 = 10% off
-  FIXED        // e.g. 5 = $5 off
+  PERCENTAGE
+  FIXED
 }
