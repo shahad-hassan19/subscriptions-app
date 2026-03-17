@@ -1,0 +1,109 @@
+# render.yaml — Render Blueprint
+# Place this at the root of your repository.
+#
+# On Render: Dashboard → New → Blueprint → connect your repo
+# Render reads this file and creates all services automatically.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+
+  # ── 1. Express API server ───────────────────────────────────────────────────
+  - type: web
+    name: shopify-subs-server
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+
+    # Render's free tier spins down after 15 min of inactivity.
+    # Upgrade to Starter ($7/mo) for always-on — recommended for production.
+    plan: free
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 3000
+
+      # ── Database ──────────────────────────────────────────────────────────
+      # Paste your Neon connection string here OR set it manually in the
+      # Render dashboard after deploy (Dashboard → Service → Environment)
+      - key: DATABASE_URL
+        sync: false   # sync: false = Render prompts you to fill this in
+
+      # ── Shopify ───────────────────────────────────────────────────────────
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SHOPIFY_SCOPES
+        value: read_products,write_products,read_customers,write_customers,read_orders,write_orders
+      - key: SHOPIFY_API_VERSION
+        value: "2024-01"
+
+      # ── JWT ───────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        generateValue: true   # Render auto-generates a secure random value
+
+      # ── Stripe ────────────────────────────────────────────────────────────
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      # ── Email ─────────────────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+      # ── App URLs ──────────────────────────────────────────────────────────
+      # Fill these in after the services are created — you need the Render
+      # URLs first. Update them in the Render dashboard → Environment.
+      - key: APP_URL
+        sync: false   # https://shopify-subs-server.onrender.com
+      - key: PORTAL_URL
+        sync: false   # https://shopify-subs-portal.onrender.com
+      - key: CORS_ORIGIN
+        sync: false   # https://shopify-subs-admin.onrender.com,https://shopify-subs-portal.onrender.com
+
+      # ── Cron ──────────────────────────────────────────────────────────────
+      - key: CRON_SECRET
+        generateValue: true   # Render auto-generates — copy it for cron-job.org
+
+  # ── 2. Admin dashboard (React + Vite) ──────────────────────────────────────
+  - type: web
+    name: shopify-subs-admin
+    runtime: static
+    buildCommand: cd admin && npm ci && npm run build
+    staticPublishPath: ./admin/dist
+
+    # React Router needs this so direct URL visits (e.g. /subscriptions)
+    # don't return 404 — Render serves index.html for all paths instead.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    envVars:
+      - key: VITE_API_URL
+        sync: false   # https://shopify-subs-server.onrender.com
+
+  # ── 3. Customer portal (React + Vite) ──────────────────────────────────────
+  - type: web
+    name: shopify-subs-portal
+    runtime: static
+    buildCommand: cd portal && npm ci && npm run build
+    staticPublishPath: ./portal/dist
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    envVars:
+      - key: VITE_API_URL
+        sync: false   # https://shopify-subs-server.onrender.com

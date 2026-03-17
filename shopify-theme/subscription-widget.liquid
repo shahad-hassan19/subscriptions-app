@@ -1,0 +1,55 @@
+{% comment %}
+  subscription-widget.liquid
+  Include this snippet in your product template: {% render 'subscription-widget', product: product %}
+
+  This snippet:
+  1. Creates the mount point div with all data attributes the widget JS needs
+  2. Loads the widget script from your theme's assets
+{% endcomment %}
+
+{% assign subs_variant = product.selected_or_first_available_variant %}
+
+<div
+  id="subs-widget"
+  data-shop-id="{{ shop.metafields.subscriptions.shop_id }}"
+  data-app-url="{{ shop.metafields.subscriptions.app_url }}"
+  data-portal-url="{{ shop.metafields.subscriptions.portal_url }}"
+  data-variant-id="{{ subs_variant.id }}"
+  data-price="{{ subs_variant.price | divided_by: 100.0 }}"
+>
+  {{- 'subscription-widget.js' | asset_url | script_tag -}}
+</div>
+
+{% comment %}
+  SETUP INSTRUCTIONS:
+
+  1. Upload subscription-widget.js to your theme's Assets folder
+
+  2. Set the required metafields on your shop:
+     - Namespace: subscriptions
+     - Keys: shop_id, app_url, portal_url
+
+     In Shopify Admin → Settings → Custom data → Shops → Add definition
+     Or via the API:
+       PATCH /admin/api/2024-01/shop.json
+       {
+         "shop": {
+           "metafields": [
+             { "namespace": "subscriptions", "key": "shop_id",    "value": "YOUR_DB_SHOP_ID",        "type": "single_line_text_field" },
+             { "namespace": "subscriptions", "key": "app_url",    "value": "https://your-server.com", "type": "single_line_text_field" },
+             { "namespace": "subscriptions", "key": "portal_url", "value": "https://your-portal.com", "type": "single_line_text_field" }
+           ]
+         }
+       }
+
+  3. Include the snippet in your product template:
+     In product.liquid (or sections/main-product.liquid for Dawn theme),
+     add this line after the buy button:
+
+       {% render 'subscription-widget', product: product %}
+
+  4. Test it:
+     - Visit any product page on your store
+     - You should see the "Purchase options" widget below the buy button
+     - Selecting a plan and clicking "Subscribe now" should redirect to your portal
+{% endcomment %}
